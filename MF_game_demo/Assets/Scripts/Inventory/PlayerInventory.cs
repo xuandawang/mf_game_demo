@@ -5,47 +5,79 @@ using System.Text;
 
 namespace Assets.Scripts.Inventory
 {
-    public class PlayerInventory : IInventory
+    class PlayerInventory : BasicInventory, ITrader
     {
 
-        private Dictionary<IInventoryItem, int> items;
-        Dictionary<IInventoryItem, int> IInventory.Items
+
+
+        public PlayerInventory(List<InventoryBlock> blocks) : base(blocks)
+        {
+
+        }
+
+        /// <summary>
+        /// 主武器
+        /// </summary>
+        public Weapon MainWeapon { get; set; }
+        /// <summary>
+        /// 副武器
+        /// </summary>
+        public Weapon SecondWeapon { get; set; }
+        /// <summary>
+        /// 主武器剩余弹药
+        /// </summary>
+        public int AmmoCount
         {
             get
             {
-                return items;
+                if (MainWeapon != null)
+                    return Inventory.GetItemCount(MainWeapon.AmmoItemId);
+                else
+                    return 0;
             }
         }
 
-        private int capacityMax=30;
-        int IInventory.CapacityMax
+        /// <summary>
+        /// 尝试消耗主武器对应的弹药，当弹药不足时失败
+        /// </summary>
+        /// <param name="count">扣除数量</param>
+        /// <returns>是否扣除成功</returns>
+        public bool ConsumeAmmo(int count)
         {
-            get
+            if (MainWeapon == null) return false;
+
+            if (AmmoCount >= count)
             {
-                return capacityMax;
+                Inventory.DelItem(MainWeapon.AmmoItemId, count);
+                return true;
             }
-            set
-            {
-                if (value >= capacityUsed)
-                    capacityMax = value;
-            }
+            else
+                return false;
         }
-        private int capacityUsed=0;
-        int IInventory.CapacityUsed
+
+        //以下为仓库接口
+        public IInventory Inventory
         {
             get
             {
-                return capacityUsed;
-            }
-            set
-            {
-                if (value >= 0)
-                    capacityUsed = value;
+                return this as IInventory;
             }
         }
 
-        private int cash=0;
-        int IInventory.Cash
+        //以下为交易接口
+        public ITrader CurrentShop
+        {
+            set; get;
+        }
+        IInventory ITrader.inventory
+        {
+            get
+            {
+                return this as IInventory;
+            }
+        }
+        private int cash = 0;
+        int ITrader.Cash
         {
             get
             {
@@ -53,86 +85,52 @@ namespace Assets.Scripts.Inventory
             }
             set
             {
-                if (value >= 0)
+                if (value > 0)
                     cash = value;
             }
         }
 
-        int IInventory.AddItem(IInventoryItem item)
+        /// <summary>
+        /// 从商店购买商品，由ItemManager捕获操作后调用
+        /// </summary>
+        /// <param name="other">商店</param>
+        /// <param name="block">商品格</param>
+        /// <returns>交易金额</returns>
+        int ITrader.Buy(ITrader other, InventoryBlock block)
         {
-            if (item == null)
-                return 0;
-            if (item.StackMaxCount > 0)
+            //看看现金够不够
+            int cashNeed = block.Count * block.Item.Price;
+            //不够 交易失败
+            if (cashNeed > cash) return 0;
+
+            //价钱由商店报
+            int cashDelta = other.Sell(this, block);
+            cash -= cashDelta;
+
+            if (cashDelta != 0)
             {
-
-                //可堆叠，未完成
-                return 0;
-                    
+                (this as IInventory).AddItem(block);
             }
-            else
+
+            return cashDelta;
+        }
+
+        /// <summary>
+        /// 手上物体卖给商店，由ItemManager捕获操作后调用
+        /// </summary>
+        /// <param name="other">商店</param>
+        /// <param name="block">商品格</param>
+        /// <returns>交易金额</returns>
+        int ITrader.Sell(ITrader other, InventoryBlock block)
+        {
+            int cashDelta = 0;
+            if ((this as IInventory).DelItem(block) != 0)
             {
-                //不可堆叠
-                if (capacityUsed >= capacityMax)
-                    return 0;
-                else
-                {
-                    items.Add(item, 1);
-                    capacityUsed++;
-                    return 1;
-                }
+                //价格由商店报
+                cashDelta = other.Buy(this, block);
             }
-                
-        }
-
-        int IInventory.AddItemByID(int itemId, int count)
-        {
-            throw new NotImplementedException();
-        }
-
-        int IInventory.DelAllItemByID(int itemId)
-        {
-            throw new NotImplementedException();
-        }
-
-        int IInventory.DelItem(IInventoryItem item)
-        {
-            throw new NotImplementedException();
-        }
-
-        int IInventory.DelItemByID(int itemId, int count)
-        {
-            throw new NotImplementedException();
-        }
-
-        bool IInventory.HasItem(int itemId)
-        {
-            throw new NotImplementedException();
-        }
-
-        int IInventory.ItemCount(int itemId)
-        {
-            throw new NotImplementedException();
-        }
-
-        int IInventory.ItemCount(IInventoryItem item)
-        {
-            throw new NotImplementedException();
-        }
-
-        int IInventory.SetItemCount(int itemId)
-        {
-            throw new NotImplementedException();
-        }
-
-        bool IInventory.TryBuy(IInventory shop, IInventoryItem item)
-        {
-            throw new NotImplementedException();
-        }
-
-        public PlayerInventory()
-        {
-            items = new Dictionary<IInventoryItem, int>();
-            
+            cash += cashDelta;
+            return cashDelta;
         }
     }
 }
